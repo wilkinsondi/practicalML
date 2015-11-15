@@ -1,0 +1,84 @@
+---
+title: "Practical Machine Learning - Weight Lifting Exercise Dataset"
+author: "Darren Wilkinson"
+date: "15 November 2015"
+output: html_document
+---
+
+###Abstract
+This report takes body monitor data from the evaluation of weight lifting techniques to build a prediction model. The objective of the model is to determine which style of weight lifting technique is being used solely from evaluation of body monitoring data. A prediction tree, random forest and tree with bagging models are compared. The random forest model is the most accurate with a 99.7% accuracy and 0.3% out of sample error rate. We subsequently use this model to predict 20 cases in a testing data set.
+
+###Data set
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E). More information is available from the website: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+  There are 19622 observations of 160 variables from 6 participants. If we import the "NA" and #DIV/0!" values as "NA", then NA field values represent 61% of values in the matrix. We use this to inform data cleaning.
+```{r, cache=TRUE}
+#Data import
+if (!exists("pmltraining")) {
+    pmltraining<- read.csv("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",na.string=c("NA", "#DIV/0!"))             
+    }
+if (!exists("pmltesting")) {
+    pmltesting <- read.csv("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",na.string=c("NA", "#DIV/0!"))
+}
+dim(pmltraining)
+prop.table(table(is.na(pmltraining)))
+```
+###Data cleaning
+There are numerous columns with large number of missing values and NA values. These columns are removed. In addition, to generalize the model for use with any user, the first seven columns which represent the observation number(x), name, time and window are also removed. 
+```{r}
+cleanpmltraining <-pmltraining[, apply(pmltraining, 2, function(x) !any(is.na(x)))] 
+cleanpmltraining <-cleanpmltraining[,-(1:7)] 
+dim(cleanpmltraining)
+```
+###Cross validation
+The training data are partitioned into a training (70%) and testing set (30%) for cross validation and derivation of out-of-sample error rates (and forecast accuracy).
+```{r, cache=TRUE}
+library(caret)
+set.seed(1773)
+partition<-createDataPartition(y=cleanpmltraining$classe, p=0.70,list=F)
+training<-cleanpmltraining[partition,] 
+test<-cleanpmltraining[-partition,] 
+dim(training)
+dim(test)
+```
+###Model selection
+Given the high number of variables, the categorical nature of the outcomes and exploratory data review (not shown), a non-linear model approach is deemed the most appropriate. THree models are investigated: trees, a random forest and bagging with trees.
+```{r, cache=TRUE}
+# Tree
+library("rpart")
+model1 <- rpart(classe ~., data=training, method="class")
+pred1  <- predict(model1, test, type="class")
+confusionMatrix(pred1,test$classe)
+
+#Random forest
+library("randomForest") 
+model2 <- randomForest(classe ~ ., data = training, ntree = 1024)
+pred2 <- predict(model2, test, type="class")
+confusionMatrix(pred2,test$classe)
+
+#This code orders variables with most importance for random forest. Suppressed.
+#imp <- varImp(model2)
+#imp$Variable <- row.names(imp)
+#imp[order(imp$Overall, decreasing = T), ]
+
+#Bagging
+library("ipred")
+model3 <- bagging(classe ~., data=training, coob=TRUE)
+pred3 <- predict(model3, test)
+confusionMatrix(pred3, test$classe)
+```
+###Conclusion
+A basic decision trees approach yields the lowest out-of-sample accuracy 73.7% (an out-of-sample error rate of 26.3%). A random forest approach yields a very high accuracy of 99.7%, (CI of 99.5%-99.81%) and subsequently a very low 0.3% out of sample error rate. Bagging with trees yields a similarly high, but slightly lower accuracy of 98.7% (out of sample error rate of 1.3%). The best model is the random forest. The model can be used to predict the outcomes (A-E) for the 20 use cases.The output has been suppressed.
+```{r, echo=TRUE, eval=FALSE}
+Outcomes <- predict(model2, newdata = pmltesting, type="class")
+print(Outcomes)
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files("Outcomes")
+```
